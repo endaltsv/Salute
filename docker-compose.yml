@@ -10,8 +10,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:123456@postgres:5432/salute
-      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:123456@postgres:5432/salute
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
+      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
       - SUPPORT_USERNAME=${SUPPORT_USERNAME}
@@ -28,8 +28,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:123456@postgres:5432/salute
-      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:123456@postgres:5432/salute
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
+      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
       - SUPPORT_USERNAME=${SUPPORT_USERNAME}
@@ -46,8 +46,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:123456@postgres:5432/salute
-      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:123456@postgres:5432/salute
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
+      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
       - SUPPORT_USERNAME=${SUPPORT_USERNAME}
@@ -64,8 +64,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:123456@postgres:5432/salute
-      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:123456@postgres:5432/salute
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
+      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
       - SUPPORT_USERNAME=${SUPPORT_USERNAME}
@@ -75,13 +75,29 @@ services:
     command: python workers/broadcast_worker/worker.py
     restart: unless-stopped
 
+  migrations:
+    build: .
+    container_name: salute_migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
+      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
+    volumes:
+      - .:/app
+    entrypoint: [ "alembic" ]
+    command: upgrade head
+    profiles:
+      - tools
+
   postgres:
     image: postgres:15
     container_name: salute_postgres
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=123456
-      - POSTGRES_DB=salute
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-123456}
+      - POSTGRES_DB=${POSTGRES_DB:-salute}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
