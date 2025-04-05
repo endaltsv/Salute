@@ -3,7 +3,8 @@ import os
 import signal
 import sys
 import time
-from redis.asyncio import Redis
+
+from app.redis_queue.connection import redis
 from app.utils.logger import logger
 
 CHECK_INTERVAL = 5
@@ -15,7 +16,6 @@ MAX_EXTRA_JOIN_WORKERS = 3
 
 class WorkerManager:
     def __init__(self):
-        self.redis = Redis(decode_responses=True)
         self.running_workers = {}  # key: name, value: (process, last_active)
 
     async def monitor(self):
@@ -37,8 +37,7 @@ class WorkerManager:
         if key not in self.running_workers:
             logger.info("🤖 Запуск главного бота main.py...")
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, "main.py",
-                env=os.environ.copy()
+                sys.executable, "main.py", env=os.environ.copy()
             )
             self.running_workers[key] = (proc, asyncio.get_event_loop().time())
 
@@ -48,8 +47,7 @@ class WorkerManager:
         if log_key not in self.running_workers:
             logger.info("🧾 Запуск log_worker...")
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, "workers/log_worker/worker.py",
-                env=os.environ.copy()
+                sys.executable, "workers/log_worker/worker.py", env=os.environ.copy()
             )
             self.running_workers[log_key] = (proc, asyncio.get_event_loop().time())
 
@@ -58,13 +56,12 @@ class WorkerManager:
         if join_key not in self.running_workers:
             logger.info("🚪 Запуск базового join_worker...")
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, "workers/join_worker/worker.py",
-                env=os.environ.copy()
+                sys.executable, "workers/join_worker/worker.py", env=os.environ.copy()
             )
             self.running_workers[join_key] = (proc, asyncio.get_event_loop().time())
 
     async def check_broadcast_queues(self):
-        keys = await self.redis.keys("broadcast_tasks:*")
+        keys = await redis.keys("broadcast_tasks:*")
         for key in keys:
             bot_id = key.split(":")[-1]
             base_key = f"broadcast_worker:{bot_id}:base"
@@ -72,56 +69,80 @@ class WorkerManager:
             if base_key not in self.running_workers:
                 logger.info(f"🚀 Запуск базового broadcast_worker для bot_id={bot_id}")
                 proc = await asyncio.create_subprocess_exec(
-                    sys.executable, "workers/broadcast_worker/worker.py", bot_id,
-                    env=os.environ.copy()
+                    sys.executable,
+                    "workers/broadcast_worker/worker.py",
+                    bot_id,
+                    env=os.environ.copy(),
                 )
                 self.running_workers[base_key] = (proc, asyncio.get_event_loop().time())
 
-            queue_length = await self.redis.llen(key)
+            queue_length = await redis.llen(key)
             active_extras = [
-                k for k in self.running_workers if k.startswith(f"broadcast_worker:{bot_id}:extra")
+                k
+                for k in self.running_workers
+                if k.startswith(f"broadcast_worker:{bot_id}:extra")
             ]
             total_running = 1 + len(active_extras)
 
-            if queue_length > total_running and len(active_extras) < MAX_EXTRA_BROADCAST_WORKERS:
+            if (
+                queue_length > total_running
+                and len(active_extras) < MAX_EXTRA_BROADCAST_WORKERS
+            ):
                 extra_id = len(active_extras) + 1
                 extra_key = f"broadcast_worker:{bot_id}:extra{extra_id}"
                 logger.info(
-                    f"⚡ Запуск доп. broadcast_worker {extra_key} (очередь: {queue_length}, всего: {total_running})"
+                    f"⚡ Запуск доп. broadcast_worker {extra_key} "
+                    f"(очередь: {queue_length}, всего: {total_running})"
                 )
                 proc = await asyncio.create_subprocess_exec(
-                    sys.executable, "workers/broadcast_worker/worker.py", bot_id,
-                    env=os.environ.copy()
+                    sys.executable,
+                    "workers/broadcast_worker/worker.py",
+                    bot_id,
+                    env=os.environ.copy(),
                 )
-                self.running_workers[extra_key] = (proc, asyncio.get_event_loop().time())
+                self.running_workers[extra_key] = (
+                    proc,
+                    asyncio.get_event_loop().time(),
+                )
 
             for k in [base_key] + active_extras:
-                self.running_workers[k] = (self.running_workers[k][0], asyncio.get_event_loop().time())
+                self.running_workers[k] = (
+                    self.running_workers[k][0],
+                    asyncio.get_event_loop().time(),
+                )
 
     async def check_join_queue(self):
-        queue_length = await self.redis.llen("join_queue")
+        queue_length = await redis.llen("join_queue")
         base_key = "join_worker:base"
 
         if base_key in self.running_workers and queue_length > 0:
-            self.running_workers[base_key] = (self.running_workers[base_key][0], asyncio.get_event_loop().time())
+            self.running_workers[base_key] = (
+                self.running_workers[base_key][0],
+                asyncio.get_event_loop().time(),
+            )
 
-        active_extras = [k for k in self.running_workers if k.startswith("join_worker:extra")]
+        active_extras = [
+            k for k in self.running_workers if k.startswith("join_worker:extra")
+        ]
         total_running = 1 + len(active_extras)
 
         if queue_length > total_running and len(active_extras) < MAX_EXTRA_JOIN_WORKERS:
             extra_id = len(active_extras) + 1
             extra_key = f"join_worker:extra{extra_id}"
             logger.info(
-                f"⚡ Запуск доп. join_worker {extra_key} (очередь: {queue_length}, всего: {total_running})"
+                f"⚡ Запуск доп. join_worker {extra_key} "
+                f"(очередь: {queue_length}, всего: {total_running})"
             )
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, "workers/join_worker/worker.py",
-                env=os.environ.copy()
+                sys.executable, "workers/join_worker/worker.py", env=os.environ.copy()
             )
             self.running_workers[extra_key] = (proc, asyncio.get_event_loop().time())
 
         for k in [base_key] + active_extras:
-            self.running_workers[k] = (self.running_workers[k][0], asyncio.get_event_loop().time())
+            self.running_workers[k] = (
+                self.running_workers[k][0],
+                asyncio.get_event_loop().time(),
+            )
 
     async def cleanup_inactive_workers(self):
         now = asyncio.get_event_loop().time()
@@ -147,9 +168,12 @@ class WorkerManager:
         for key in list(self.running_workers.keys()):
             if key == "main_bot":
                 continue
-            last_ping = await self.redis.get(f"worker_status:{key}")
+            last_ping = await redis.get(f"worker_status:{key}")
             if last_ping and now - int(last_ping) > HEALTH_TIMEOUT:
-                logger.warning(f"🧟 Воркер {key} давно не пинговал ({now - int(last_ping)}s). Рестарт...")
+                logger.warning(
+                    f"🧟 Воркер {key} давно не пинговал "
+                    f"({now - int(last_ping)}s). Рестарт..."
+                )
                 proc = self.running_workers[key][0]
                 try:
                     proc.send_signal(signal.SIGTERM)
@@ -161,7 +185,10 @@ class WorkerManager:
     async def restart_failed_workers(self):
         for key, (proc, _) in list(self.running_workers.items()):
             if proc.returncode is not None and key != "main_bot":
-                logger.warning(f"💥 Воркер {key} завершился с кодом {proc.returncode}. Перезапуск...")
+                logger.warning(
+                    f"💥 Воркер {key} завершился с кодом {proc.returncode}. "
+                    f"Перезапуск..."
+                )
                 try:
                     await proc.wait()
                 except Exception:
@@ -176,13 +203,12 @@ class WorkerManager:
                 elif key.startswith("broadcast_worker:"):
                     parts = key.split(":")
                     args = ["workers/broadcast_worker/worker.py", parts[1]]
-                else:
-                    logger.warning(f"❓ Неизвестный ключ воркера {key}, не перезапускаем.")
-                    continue
 
-                proc = await asyncio.create_subprocess_exec(sys.executable, *args, env=os.environ.copy())
-                self.running_workers[key] = (proc, asyncio.get_event_loop().time())
-                logger.info(f"🔁 Воркер {key} перезапущен.")
+                if args:
+                    proc = await asyncio.create_subprocess_exec(
+                        sys.executable, *args, env=os.environ.copy()
+                    )
+                    self.running_workers[key] = (proc, asyncio.get_event_loop().time())
 
 
 if __name__ == "__main__":

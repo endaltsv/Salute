@@ -2,12 +2,9 @@ import asyncio
 import json
 import time
 
-from redis.asyncio import Redis
-
+from app.redis_queue.connection import redis
 from app.utils.logger import logger
 from workers.broadcast_worker.services.broadcast_handler import process_broadcast_task
-
-redis = Redis(decode_responses=True)
 
 
 async def heartbeat(name: str):

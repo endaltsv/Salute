@@ -1,22 +1,22 @@
 import asyncio
 import logging
 import os
+
 from aiogram import Bot
-from aiogram.exceptions import TelegramRetryAfter
 from aiogram.client.default import DefaultBotProperties
-from redis.asyncio import Redis
-from app.utils.logger import logger
+from aiogram.exceptions import TelegramRetryAfter
 from dotenv import load_dotenv
+
+from app.redis_queue.connection import redis
+from app.utils.logger import logger
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", 0))
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost")
 DEFAULT_PARSE_MODE = DefaultBotProperties(parse_mode="HTML")
 
 bot = Bot(token=BOT_TOKEN, default=DEFAULT_PARSE_MODE)
-redis = Redis.from_url(REDIS_URL)
 
 MAX_MSG_SIZE = 4096
 

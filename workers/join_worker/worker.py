@@ -3,15 +3,14 @@
 import asyncio
 import json
 import time
-from redis.asyncio import Redis
+
+from app.redis_queue.connection import redis
 from app.utils.logger import logger
 from workers.join_worker.services.join_handler import handle_join
 
-redis_client = Redis(decode_responses=True)
-
 
 async def heartbeat(name: str):
-    await redis_client.set(f"worker_status:{name}", int(time.time()))
+    await redis.set(f"worker_status:{name}", int(time.time()))
 
 
 async def main():
@@ -19,7 +18,7 @@ async def main():
 
     while True:
         try:
-            task = await redis_client.blpop("join_queue", timeout=1)
+            task = await redis.blpop("join_queue", timeout=1)
             if task:
                 _, data = task
                 payload = json.loads(data)

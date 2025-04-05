@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+.env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache
+.idea
+*.log
+logs/
+postgres_data/
+redis_data/ 

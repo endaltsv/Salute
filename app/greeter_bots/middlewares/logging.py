@@ -1,8 +1,10 @@
-from aiogram.fsm.context import FSMContext
+from typing import Any, Callable, Dict
+
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Message, CallbackQuery
-from typing import Callable, Dict, Any
+from aiogram.fsm.context import FSMContext
+from aiogram.types import TelegramObject
 from sqlalchemy import select
+
 from app.database.base.session import async_session
 from app.database.models import ChannelMember
 from app.database.models.bot import Bot
@@ -15,14 +17,10 @@ class LoggingMiddleware(BaseMiddleware):
         self.bot_id = bot_id
 
     async def __call__(
-        self,
-        handler: Callable,
-        event: TelegramObject,
-        data: Dict[str, Any]
+        self, handler: Callable, event: TelegramObject, data: Dict[str, Any]
     ) -> Any:
         try:
             user_id = getattr(event.from_user, "id", None)
-            state: FSMContext = data.get("state")
             tg_user = getattr(event, "from_user", None)
 
             if not tg_user:
@@ -31,7 +29,8 @@ class LoggingMiddleware(BaseMiddleware):
             telegram_id = tg_user.id
 
             await send_log_to_admin(
-                f"🔍 Проверка пользователя <code>{telegram_id}</code> на владельца Greeter-бота <b>{self.bot_id}</b>"
+                f"🔍 Проверка пользователя {telegram_id} на владельца "
+                f"Greeter-бота {self.bot_id}"
             )
 
             async with async_session() as session:
@@ -43,27 +42,30 @@ class LoggingMiddleware(BaseMiddleware):
                 owner_telegram_id = result.scalar_one_or_none()
 
                 if telegram_id == owner_telegram_id:
-                    await send_log_to_admin(
-                        f"✅ Пользователь <code>{telegram_id}</code> является владельцем Greeter-бота <b>{self.bot_id}</b>"
-                    )
+                    # await send_log_to_admin(
+                    #     f"✅ Пользователь {telegram_id} является владельцем "
+                    #     f"Greeter-бота {self.bot_id}"
+                    # )
                     return await handler(event, data)
 
                 await send_log_to_admin(
-                    f"👤 Пользователь <code>{telegram_id}</code> — НЕ владелец бота <b>{self.bot_id}</b>"
+                    f"👤 Пользователь {telegram_id} — НЕ владелец бота "
+                    f"{self.bot_id}"
                 )
 
                 existing_member = await session.execute(
                     select(ChannelMember).where(
                         ChannelMember.user_id == user_id,
-                        ChannelMember.bot_id == self.bot_id
+                        ChannelMember.bot_id == self.bot_id,
                     )
                 )
                 member = existing_member.scalar_one_or_none()
 
                 if not member:
                     await send_log_to_admin(
-                        f"❌ Пользователь <code>{telegram_id}</code> отсутствует в <b>channel_members</b> (bot_id={self.bot_id})",
-                        level="warning"
+                        f"❌ Пользователь {telegram_id} отсутствует в "
+                        f"channel_members (bot_id={self.bot_id})",
+                        level="warning",
                     )
                     return
 
@@ -72,14 +74,16 @@ class LoggingMiddleware(BaseMiddleware):
                     await session.commit()
 
                     await send_log_to_admin(
-                        f"🔓 Капча пройдена: пользователь <code>{telegram_id}</code> (bot_id={self.bot_id})"
+                        f"🔓 Капча пройдена: пользователь {telegram_id} "
+                        f"(bot_id={self.bot_id})"
                     )
 
                     return await event.answer("✅ Спасибо, вы прошли капчу.")
 
                 if member.is_available_for_broadcast:
                     await send_log_to_admin(
-                        f"📌 Пользователь <code>{telegram_id}</code> уже прошёл капчу (bot_id={self.bot_id})"
+                        f"📌 Пользователь {telegram_id} уже прошёл капчу "
+                        f"(bot_id={self.bot_id})"
                     )
                     return
 
@@ -87,6 +91,6 @@ class LoggingMiddleware(BaseMiddleware):
 
         except Exception as e:
             await send_log_to_admin(
-                f"🔥 <b>Ошибка в LoggingMiddleware</b>\n<code>{e}</code>",
-                level="error"
+                f"🔥 <b>Ошибка в LoggingMiddleware</b>\n<code>{str(e)}</code>",
+                level="error",
             )
