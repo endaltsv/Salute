@@ -1,7 +1,13 @@
 import asyncio
+
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
@@ -23,7 +29,9 @@ async def handle_join(payload: dict):
         chat_id = payload["chat_id"]
         bot_id = payload["bot_id"]
 
-        logger.info(f"🚪 Join handler received: user_id={user_id}, chat_id={chat_id}, bot_id={bot_id}")
+        logger.info(
+            f"🚪 Join handler received: user_id={user_id}, chat_id={chat_id}, bot_id={bot_id}"
+        )
 
         async with async_session() as session:
             result = await session.execute(
@@ -34,22 +42,28 @@ async def handle_join(payload: dict):
             channel = result.scalar_one_or_none()
 
             if not channel:
-                logger.warning(f"⚠️ Channel not found for chat_id={chat_id}, bot_id={bot_id}")
+                logger.warning(
+                    f"⚠️ Channel not found for chat_id={chat_id}, bot_id={bot_id}"
+                )
                 return
 
             try:
-                async with Bot(token=channel.bot.token, default=DEFAULT_PARSE_MODE) as bot:
+                async with Bot(
+                    token=channel.bot.token, default=DEFAULT_PARSE_MODE
+                ) as bot:
                     await process_channel_join(bot, session, channel, user_id, chat_id)
             except Exception as e:
                 logger.error(f"❌ Error processing bot_id={bot_id}: {e}")
 
 
-async def process_channel_join(bot: Bot, session, channel: Channel, user_id: int, chat_id: int):
+async def process_channel_join(
+    bot: Bot, session, channel: Channel, user_id: int, chat_id: int
+):
     result = await session.execute(
         select(ChannelMember).where(
             ChannelMember.channel_id == channel.id,
             ChannelMember.user_id == user_id,
-            ChannelMember.bot_id == channel.bot_id
+            ChannelMember.bot_id == channel.bot_id,
         )
     )
     member = result.scalar_one_or_none()
@@ -58,7 +72,7 @@ async def process_channel_join(bot: Bot, session, channel: Channel, user_id: int
         logger.info(f"ℹ️ Member already in DB for bot_id={channel.bot_id}")
 
         try:
-            await bot.approve_chat_join_request(chat_id, user_id)
+            await schedule_auto_approve(bot, channel, chat_id, user_id)
             logger.info(f"✅ Approved (existing member) user {user_id}")
         except Exception as e:
             logger.warning(f"⚠️ Could not approve existing member: {e}")
@@ -74,18 +88,17 @@ async def process_channel_join(bot: Bot, session, channel: Channel, user_id: int
                 kb = ReplyKeyboardMarkup(
                     keyboard=[[KeyboardButton(text=channel.captcha_button_text)]],
                     resize_keyboard=True,
-                    one_time_keyboard=True
+                    one_time_keyboard=True,
                 )
             await bot.send_message(
                 chat_id=user_id,
-                text=channel.captcha_text or "Пожалуйста, подтвердите, что вы не робот:",
-                reply_markup=kb
+                text=channel.captcha_text
+                or "Пожалуйста, подтвердите, что вы не робот:",
+                reply_markup=kb,
             )
 
     new_member = ChannelMember(
-        channel_id=channel.id,
-        user_id=user_id,
-        bot_id=channel.bot_id
+        channel_id=channel.id, user_id=user_id, bot_id=channel.bot_id
     )
     session.add(new_member)
     try:
@@ -106,21 +119,29 @@ async def send_welcome(bot: Bot, user_id: int, channel: Channel):
     if not channel.welcome_enabled:
         return
     if channel.has_button:
-        if channel.button_type == "inline" and channel.button_text and channel.button_url:
+        if (
+            channel.button_type == "inline"
+            and channel.button_text
+            and channel.button_url
+        ):
             kb = InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text=channel.button_text, url=channel.button_url)]]
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=channel.button_text, url=channel.button_url
+                        )
+                    ]
+                ]
             )
         elif channel.button_type == "reply" and channel.button_text:
             kb = ReplyKeyboardMarkup(
                 keyboard=[[KeyboardButton(text=channel.button_text)]],
                 resize_keyboard=True,
-                one_time_keyboard=True
+                one_time_keyboard=True,
             )
 
     await bot.send_message(
-        chat_id=user_id,
-        text=channel.welcome_message,
-        reply_markup=kb
+        chat_id=user_id, text=channel.welcome_message, reply_markup=kb
     )
 
 
@@ -150,6 +171,8 @@ async def auto_approve(bot_token: str, chat_id: int, user_id: int, delay: int):
     try:
         async with Bot(token=bot_token, default=DEFAULT_PARSE_MODE) as bot:
             await bot.approve_chat_join_request(chat_id, user_id)
-            logger.info(f"✅ Approved join request for user {user_id} in chat {chat_id}")
+            logger.info(
+                f"✅ Approved join request for user {user_id} in chat {chat_id}"
+            )
     except Exception as e:
         logger.error(f"❌ Error approving join request: {e}")
