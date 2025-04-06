@@ -40,7 +40,7 @@ class DockerWorkerManager:
         if "log_worker" not in self.running_workers:
             try:
                 container = self.docker_client.containers.run(
-                    "salute_log_worker",
+                    "salute_manager",
                     command="python workers/log_worker/worker.py",
                     environment={
                         "DATABASE_URL": os.getenv("DATABASE_URL"),
@@ -66,7 +66,7 @@ class DockerWorkerManager:
         if "join_worker" not in self.running_workers:
             try:
                 container = self.docker_client.containers.run(
-                    "salute_join_worker",
+                    "salute_manager",
                     command="python workers/join_worker/worker.py",
                     environment={
                         "DATABASE_URL": os.getenv("DATABASE_URL"),
@@ -92,7 +92,7 @@ class DockerWorkerManager:
         if "broadcast_worker" not in self.running_workers:
             try:
                 container = self.docker_client.containers.run(
-                    "salute_broadcast_worker",
+                    "salute_manager",
                     command="python workers/broadcast_worker/worker.py",
                     environment={
                         "DATABASE_URL": os.getenv("DATABASE_URL"),
