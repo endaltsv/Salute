@@ -1,10 +1,14 @@
 version: '3.8'
 
+name: salute
+
 services:
-  manager:
+  main:
     build: .
-    container_name: salute_manager
+    image: salute_main
     depends_on:
+      manager:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -18,66 +22,40 @@ services:
       - REDIS_URL=redis://redis:6379
     volumes:
       - ./logs:/app/logs
+    command: python main.py
+    restart: unless-stopped
+
+  manager:
+    build: .
+    image: salute_manager
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
+      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
+      - SUPPORT_USERNAME=${SUPPORT_USERNAME}
+      - REDIS_URL=redis://redis:6379
+      - COMPOSE_PROJECT_NAME=salute
+    volumes:
+      - ./logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
     command: python managers/manager.py
     restart: unless-stopped
-
-  log_worker:
-    build: .
-    container_name: salute_log_worker
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
-      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
-      - BOT_TOKEN=${BOT_TOKEN}
-      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
-      - SUPPORT_USERNAME=${SUPPORT_USERNAME}
-      - REDIS_URL=redis://redis:6379
-    volumes:
-      - ./logs:/app/logs
-    command: python workers/log_worker/worker.py
-    restart: unless-stopped
-
-  join_worker:
-    build: .
-    container_name: salute_join_worker
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
-      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
-      - BOT_TOKEN=${BOT_TOKEN}
-      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
-      - SUPPORT_USERNAME=${SUPPORT_USERNAME}
-      - REDIS_URL=redis://redis:6379
-    volumes:
-      - ./logs:/app/logs
-    command: python workers/join_worker/worker.py
-    restart: unless-stopped
-
-  broadcast_worker:
-    build: .
-    container_name: salute_broadcast_worker
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
-      - ALEMBIC_DATABASE_URL=postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/salute
-      - BOT_TOKEN=${BOT_TOKEN}
-      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
-      - SUPPORT_USERNAME=${SUPPORT_USERNAME}
-      - REDIS_URL=redis://redis:6379
-    volumes:
-      - ./logs:/app/logs
-    command: python workers/broadcast_worker/worker.py
-    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import redis; r = redis.Redis(host='redis', port=6379); r.ping()" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   migrations:
     build: .
-    container_name: salute_migrations
+    image: salute_migrations
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,7 +71,6 @@ services:
 
   postgres:
     image: postgres:15
-    container_name: salute_postgres
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-123456}
@@ -111,7 +88,6 @@ services:
 
   redis:
     image: redis:7
-    container_name: salute_redis
     ports:
       - "6379:6379"
     volumes:

@@ -11,8 +11,8 @@ from app.utils.logger import logger
 from workers.join_worker.services.join_handler import handle_join
 
 # Константы для пакетной обработки
-BATCH_SIZE = 10  # Максимальный размер пачки
-BATCH_TIMEOUT = 0.5  # Максимальное время ожидания в секундах
+BATCH_SIZE = 20  # Максимальный размер пачки
+BATCH_TIMEOUT = 1  # Максимальное время ожидания в секундах
 
 # Настройки Redis из переменных окружения
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")

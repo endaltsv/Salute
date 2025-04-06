@@ -2,18 +2,29 @@
 
 import asyncio
 import logging
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
+from app.database.base.init_db import init_db
 from app.greeter_bots.core.launcher_all import launch_all_greeter_bots
 from app.main_bot.config.config import settings
-from app.database.base.init_db import init_db
-from app.main_bot.handlers import start, create_bot, my_bots, delete_bot, about, support, pricing
+from app.main_bot.handlers import (
+    about,
+    create_bot,
+    delete_bot,
+    my_bots,
+    pricing,
+    start,
+    support,
+)
 from app.main_bot.middlewares.UserMiddleware import UserMiddleware
 from app.utils.logger import add_telegram_log_handler
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s — %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s — %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -32,12 +43,6 @@ def setup_routers(dp: Dispatcher) -> None:
     dp.include_router(support.router)
     dp.include_router(pricing.router)
 
-    # dp.include_router(add_channel.router)
-    # dp.include_router(my_channels.router)
-    # dp.include_router(captcha_menu.router)
-    # dp.include_router(delete_channel.router)
-    # dp.include_router(greeting_settings.router)
-
     logger.info("✅ Роутеры подключены")
 
 
@@ -46,13 +51,14 @@ async def main() -> None:
     await init_db()
     logger.info("✅ База данных готова")
 
-
-
     logger.info("📡 Запускаем всех greeter-ботов из базы...")
-    await launch_all_greeter_bots()  # ⬅️ subprocess, ничего не возвращает
+    await launch_all_greeter_bots()
 
     logger.info("🤖 Запуск основного управляющего бота...")
-    bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(
+        token=settings.bot_token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
 
     add_telegram_log_handler(bot, settings.admin_chat_id)
     logger.info("🚀 Логгер запущен")
@@ -64,9 +70,8 @@ async def main() -> None:
     await dp.start_polling(bot)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logger.warning("🛑 Бот остановлен.")
+        logger.warning("�� Бот остановлен.")

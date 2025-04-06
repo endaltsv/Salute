@@ -5,14 +5,15 @@ import os
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.exceptions import TelegramRetryAfter
-from dotenv import load_dotenv
 
 from app.redis_queue.connection import redis
 from app.utils.logger import logger
 
-load_dotenv()
-
+# Загрузка переменных окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN не установлен в переменных окружения")
+
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", 0))
 DEFAULT_PARSE_MODE = DefaultBotProperties(parse_mode="HTML")
 
@@ -56,6 +57,7 @@ async def flush_logs():
 async def send_safe(text: str):
     try:
         await bot.send_message(ADMIN_CHAT_ID, text)
+        asyncio.sleep(0.5)
     except TelegramRetryAfter as e:
         logger.warning(f"⏳ FloodWait! Ждём {e.retry_after} сек...")
         await asyncio.sleep(e.retry_after)

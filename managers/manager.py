@@ -1,8 +1,8 @@
 import asyncio
 import os
-import signal
-import sys
-import time
+
+import docker
+from docker.errors import APIError
 
 from app.redis_queue.connection import redis
 from app.utils.logger import logger
@@ -11,206 +11,218 @@ CHECK_INTERVAL = 5
 INACTIVITY_TIMEOUT = 60
 HEALTH_TIMEOUT = 30
 MAX_EXTRA_BROADCAST_WORKERS = 5
-MAX_EXTRA_JOIN_WORKERS = 3
+MAX_EXTRA_JOIN_WORKERS = 10
 
 
-class WorkerManager:
+class DockerWorkerManager:
     def __init__(self):
-        self.running_workers = {}  # key: name, value: (process, last_active)
+        self.docker_client = docker.from_env()
+        self.running_workers = {}  # key: name, value: container_id
+        self.image_name = "salute_manager"
+        self.network_name = "salute_default"  # Имя сети Docker Compose
 
     async def monitor(self):
-        logger.info("📡 Worker Manager запущен...")
-
-        await self.ensure_main_bot()
+        logger.info("📡 Docker Worker Manager запущен...")
 
         while True:
-            await self.ensure_base_workers()
-            await self.check_broadcast_queues()
-            await self.check_join_queue()
-            await self.cleanup_inactive_workers()
-            await self.check_health_status()
-            await self.restart_failed_workers()
-            await asyncio.sleep(CHECK_INTERVAL)
-
-    async def ensure_main_bot(self):
-        key = "main_bot"
-        if key not in self.running_workers:
-            logger.info("🤖 Запуск главного бота main.py...")
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "main.py", env=os.environ.copy()
-            )
-            self.running_workers[key] = (proc, asyncio.get_event_loop().time())
+            try:
+                await self.ensure_base_workers()
+                await self.check_broadcast_queues()
+                await self.check_join_queue()
+                await self.cleanup_inactive_workers()
+                await asyncio.sleep(CHECK_INTERVAL)
+            except Exception as e:
+                logger.error(f"Ошибка в мониторе: {e}")
+                await asyncio.sleep(CHECK_INTERVAL)
 
     async def ensure_base_workers(self):
         # 🔸 log_worker
-        log_key = "log_worker:base"
-        if log_key not in self.running_workers:
-            logger.info("🧾 Запуск log_worker...")
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "workers/log_worker/worker.py", env=os.environ.copy()
-            )
-            self.running_workers[log_key] = (proc, asyncio.get_event_loop().time())
+        if "log_worker" not in self.running_workers:
+            try:
+                container = self.docker_client.containers.run(
+                    "salute_log_worker",
+                    command="python workers/log_worker/worker.py",
+                    environment={
+                        "DATABASE_URL": os.getenv("DATABASE_URL"),
+                        "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
+                        "BOT_TOKEN": os.getenv("BOT_TOKEN"),
+                        "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
+                        "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
+                        "REDIS_URL": os.getenv("REDIS_URL"),
+                    },
+                    volumes={
+                        f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}
+                    },
+                    network=self.network_name,
+                    detach=True,
+                    restart_policy={"Name": "unless-stopped"},
+                )
+                self.running_workers["log_worker"] = container.id
+                logger.info("🧾 Запущен log_worker")
+            except APIError as e:
+                logger.error(f"Ошибка запуска log_worker: {e}")
 
-        # 🔸 join_worker (base)
-        join_key = "join_worker:base"
-        if join_key not in self.running_workers:
-            logger.info("🚪 Запуск базового join_worker...")
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "workers/join_worker/worker.py", env=os.environ.copy()
-            )
-            self.running_workers[join_key] = (proc, asyncio.get_event_loop().time())
+        # 🔸 join_worker
+        if "join_worker" not in self.running_workers:
+            try:
+                container = self.docker_client.containers.run(
+                    "salute_join_worker",
+                    command="python workers/join_worker/worker.py",
+                    environment={
+                        "DATABASE_URL": os.getenv("DATABASE_URL"),
+                        "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
+                        "BOT_TOKEN": os.getenv("BOT_TOKEN"),
+                        "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
+                        "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
+                        "REDIS_URL": os.getenv("REDIS_URL"),
+                    },
+                    volumes={
+                        f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}
+                    },
+                    network=self.network_name,
+                    detach=True,
+                    restart_policy={"Name": "unless-stopped"},
+                )
+                self.running_workers["join_worker"] = container.id
+                logger.info("🚪 Запущен join_worker")
+            except APIError as e:
+                logger.error(f"Ошибка запуска join_worker: {e}")
+
+        # 🔸 broadcast_worker
+        if "broadcast_worker" not in self.running_workers:
+            try:
+                container = self.docker_client.containers.run(
+                    "salute_broadcast_worker",
+                    command="python workers/broadcast_worker/worker.py",
+                    environment={
+                        "DATABASE_URL": os.getenv("DATABASE_URL"),
+                        "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
+                        "BOT_TOKEN": os.getenv("BOT_TOKEN"),
+                        "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
+                        "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
+                        "REDIS_URL": os.getenv("REDIS_URL"),
+                    },
+                    volumes={
+                        f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}
+                    },
+                    network=self.network_name,
+                    detach=True,
+                    restart_policy={"Name": "unless-stopped"},
+                )
+                self.running_workers["broadcast_worker"] = container.id
+                logger.info("🚀 Запущен broadcast_worker")
+            except APIError as e:
+                logger.error(f"Ошибка запуска broadcast_worker: {e}")
 
     async def check_broadcast_queues(self):
-        keys = await redis.keys("broadcast_tasks:*")
-        for key in keys:
-            bot_id = key.split(":")[-1]
-            base_key = f"broadcast_worker:{bot_id}:base"
+        try:
+            keys = await redis.keys("broadcast_tasks:*")
+            for key in keys:
+                bot_id = key.split(":")[-1]
+                worker_name = f"broadcast_worker_{bot_id}"
 
-            if base_key not in self.running_workers:
-                logger.info(f"🚀 Запуск базового broadcast_worker для bot_id={bot_id}")
-                proc = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    "workers/broadcast_worker/worker.py",
-                    bot_id,
-                    env=os.environ.copy(),
-                )
-                self.running_workers[base_key] = (proc, asyncio.get_event_loop().time())
-
-            queue_length = await redis.llen(key)
-            active_extras = [
-                k
-                for k in self.running_workers
-                if k.startswith(f"broadcast_worker:{bot_id}:extra")
-            ]
-            total_running = 1 + len(active_extras)
-
-            if (
-                queue_length > total_running
-                and len(active_extras) < MAX_EXTRA_BROADCAST_WORKERS
-            ):
-                extra_id = len(active_extras) + 1
-                extra_key = f"broadcast_worker:{bot_id}:extra{extra_id}"
-                logger.info(
-                    f"⚡ Запуск доп. broadcast_worker {extra_key} "
-                    f"(очередь: {queue_length}, всего: {total_running})"
-                )
-                proc = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    "workers/broadcast_worker/worker.py",
-                    bot_id,
-                    env=os.environ.copy(),
-                )
-                self.running_workers[extra_key] = (
-                    proc,
-                    asyncio.get_event_loop().time(),
+                queue_length = await redis.llen(key)
+                current_workers = len(
+                    [
+                        k
+                        for k in self.running_workers
+                        if k.startswith(f"broadcast_worker_{bot_id}")
+                    ]
                 )
 
-            for k in [base_key] + active_extras:
-                self.running_workers[k] = (
-                    self.running_workers[k][0],
-                    asyncio.get_event_loop().time(),
-                )
+                if (
+                    queue_length > current_workers
+                    and current_workers < MAX_EXTRA_BROADCAST_WORKERS
+                ):
+                    try:
+                        container = self.docker_client.containers.run(
+                            "salute_broadcast_worker",
+                            command=f"python workers/broadcast_worker/worker.py {bot_id}",
+                            name=f"salute_broadcast_worker_{bot_id}_{current_workers}",
+                            environment={
+                                "DATABASE_URL": os.getenv("DATABASE_URL"),
+                                "ALEMBIC_DATABASE_URL": os.getenv(
+                                    "ALEMBIC_DATABASE_URL"
+                                ),
+                                "BOT_TOKEN": os.getenv("BOT_TOKEN"),
+                                "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
+                                "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
+                                "REDIS_URL": os.getenv("REDIS_URL"),
+                            },
+                            volumes={
+                                f"{os.getcwd()}/logs": {
+                                    "bind": "/app/logs",
+                                    "mode": "rw",
+                                }
+                            },
+                            network=self.network_name,
+                            detach=True,
+                            restart_policy={"Name": "unless-stopped"},
+                        )
+                        self.running_workers[f"{worker_name}_{current_workers}"] = (
+                            container.id
+                        )
+                        logger.info(f"🚀 Запущен broadcast_worker для bot_id={bot_id}")
+                    except APIError as e:
+                        logger.error(f"Ошибка запуска broadcast_worker: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка проверки broadcast очередей: {e}")
 
     async def check_join_queue(self):
-        queue_length = await redis.llen("join_queue")
-        base_key = "join_worker:base"
-
-        if base_key in self.running_workers and queue_length > 0:
-            self.running_workers[base_key] = (
-                self.running_workers[base_key][0],
-                asyncio.get_event_loop().time(),
+        try:
+            queue_length = await redis.llen("join_queue")
+            current_workers = len(
+                [k for k in self.running_workers if k.startswith("join_worker")]
             )
 
-        active_extras = [
-            k for k in self.running_workers if k.startswith("join_worker:extra")
-        ]
-        total_running = 1 + len(active_extras)
-
-        if queue_length > total_running and len(active_extras) < MAX_EXTRA_JOIN_WORKERS:
-            extra_id = len(active_extras) + 1
-            extra_key = f"join_worker:extra{extra_id}"
-            logger.info(
-                f"⚡ Запуск доп. join_worker {extra_key} "
-                f"(очередь: {queue_length}, всего: {total_running})"
-            )
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "workers/join_worker/worker.py", env=os.environ.copy()
-            )
-            self.running_workers[extra_key] = (proc, asyncio.get_event_loop().time())
-
-        for k in [base_key] + active_extras:
-            self.running_workers[k] = (
-                self.running_workers[k][0],
-                asyncio.get_event_loop().time(),
-            )
+            if (
+                queue_length > current_workers
+                and current_workers < MAX_EXTRA_JOIN_WORKERS
+            ):
+                try:
+                    container = self.docker_client.containers.run(
+                        "salute_join_worker",
+                        command="python workers/join_worker/worker.py",
+                        name=f"salute_join_worker_{current_workers}",
+                        environment={
+                            "DATABASE_URL": os.getenv("DATABASE_URL"),
+                            "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
+                            "BOT_TOKEN": os.getenv("BOT_TOKEN"),
+                            "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
+                            "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
+                            "REDIS_URL": os.getenv("REDIS_URL"),
+                        },
+                        volumes={
+                            f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}
+                        },
+                        network=self.network_name,
+                        detach=True,
+                        restart_policy={"Name": "unless-stopped"},
+                    )
+                    self.running_workers[f"join_worker_{current_workers}"] = (
+                        container.id
+                    )
+                    logger.info(f"🚪 Запущен join_worker #{current_workers}")
+                except APIError as e:
+                    logger.error(f"Ошибка запуска join_worker: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка проверки join очереди: {e}")
 
     async def cleanup_inactive_workers(self):
-        now = asyncio.get_event_loop().time()
-        to_remove = []
-
-        for key, (proc, last_active) in self.running_workers.items():
-            if "base" in key or "log_worker" in key or key == "main_bot":
-                continue
-            if now - last_active > INACTIVITY_TIMEOUT:
-                logger.info(f"🛑 Завершение неактивного воркера: {key}")
+        try:
+            for worker_name, container_id in list(self.running_workers.items()):
                 try:
-                    proc.send_signal(signal.SIGTERM)
-                    await proc.wait()
-                except Exception as e:
-                    logger.warning(f"⚠️ Не удалось завершить {key}: {e}")
-                to_remove.append(key)
-
-        for key in to_remove:
-            self.running_workers.pop(key)
-
-    async def check_health_status(self):
-        now = int(time.time())
-        for key in list(self.running_workers.keys()):
-            if key == "main_bot":
-                continue
-            last_ping = await redis.get(f"worker_status:{key}")
-            if last_ping and now - int(last_ping) > HEALTH_TIMEOUT:
-                logger.warning(
-                    f"🧟 Воркер {key} давно не пинговал "
-                    f"({now - int(last_ping)}s). Рестарт..."
-                )
-                proc = self.running_workers[key][0]
-                try:
-                    proc.send_signal(signal.SIGTERM)
-                    await proc.wait()
-                except Exception:
-                    pass
-                self.running_workers.pop(key)
-
-    async def restart_failed_workers(self):
-        for key, (proc, _) in list(self.running_workers.items()):
-            if proc.returncode is not None and key != "main_bot":
-                logger.warning(
-                    f"💥 Воркер {key} завершился с кодом {proc.returncode}. "
-                    f"Перезапуск..."
-                )
-                try:
-                    await proc.wait()
-                except Exception:
-                    pass
-                self.running_workers.pop(key)
-
-                args = []
-                if key == "log_worker:base":
-                    args = ["workers/log_worker/worker.py"]
-                elif key == "join_worker:base" or key.startswith("join_worker:extra"):
-                    args = ["workers/join_worker/worker.py"]
-                elif key.startswith("broadcast_worker:"):
-                    parts = key.split(":")
-                    args = ["workers/broadcast_worker/worker.py", parts[1]]
-
-                if args:
-                    proc = await asyncio.create_subprocess_exec(
-                        sys.executable, *args, env=os.environ.copy()
-                    )
-                    self.running_workers[key] = (proc, asyncio.get_event_loop().time())
+                    container = self.docker_client.containers.get(container_id)
+                    if container.status != "running":
+                        logger.info(f"🛑 Удаление неактивного воркера: {worker_name}")
+                        container.remove(force=True)
+                        del self.running_workers[worker_name]
+                except docker.errors.NotFound:
+                    del self.running_workers[worker_name]
+        except Exception as e:
+            logger.error(f"Ошибка очистки неактивных воркеров: {e}")
 
 
 if __name__ == "__main__":
-    manager = WorkerManager()
+    manager = DockerWorkerManager()
     asyncio.run(manager.monitor())

@@ -1,8 +1,10 @@
+import logging
 import os
 import subprocess
-import logging
 import sys
+
 from sqlalchemy import select
+
 from app.database.base.session import async_session
 from app.database.models.bot import Bot as BotModel
 
@@ -26,12 +28,23 @@ async def launch_all_greeter_bots():
                 env["BOT_TOKEN"] = bot.token
 
                 # ⚠️ Используем тот же Python, что и у main_bot
-                python_executable = sys.executable  # путь до .venv/bin/python или Scripts/python.exe
+                python_executable = sys.executable
 
-                subprocess.Popen(
-                    [python_executable, "greeter_runner.py"],  # путь к runner
-                    env=env
+                subprocess.Popen([python_executable, "greeter_runner.py"], env=env)
+                logger.info(
+                    f"✅ Greeter-бот @{bot.name or 'Без имени'} " "запущен как процесс."
                 )
-                logger.info(f"✅ Greeter-бот @{bot.name or 'Без имени'} запущен как процесс.")
             except Exception as e:
-                logger.exception(f"❌ Ошибка при запуске бота @{bot.name or 'Без имени'}: {e}")
+                logger.exception(
+                    f"❌ Ошибка при запуске бота @{bot.name or 'Без имени'}: " f"{e}"
+                )
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    import asyncio
+
+    asyncio.run(launch_all_greeter_bots())
