@@ -11,7 +11,6 @@ CHECK_INTERVAL = 5
 INACTIVITY_TIMEOUT = 60
 HEALTH_TIMEOUT = 30
 MAX_EXTRA_BROADCAST_WORKERS = 5
-MAX_EXTRA_JOIN_WORKERS = 10
 
 
 class DockerWorkerManager:
@@ -28,7 +27,6 @@ class DockerWorkerManager:
             try:
                 await self.ensure_base_workers()
                 await self.check_broadcast_queues()
-                await self.check_join_queue()
                 await self.cleanup_inactive_workers()
                 await asyncio.sleep(CHECK_INTERVAL)
             except Exception as e:
@@ -40,19 +38,10 @@ class DockerWorkerManager:
         if "log_worker" not in self.running_workers:
             try:
                 container = self.docker_client.containers.run(
-                    "salute_manager",
+                    self.image_name,
                     command="python workers/log_worker/worker.py",
-                    environment={
-                        "DATABASE_URL": os.getenv("DATABASE_URL"),
-                        "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
-                        "BOT_TOKEN": os.getenv("BOT_TOKEN"),
-                        "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
-                        "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
-                        "REDIS_URL": os.getenv("REDIS_URL"),
-                    },
-                    volumes={
-                        f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}
-                    },
+                    environment=self._get_environment(),
+                    volumes=self._get_volumes(),
                     network=self.network_name,
                     detach=True,
                     restart_policy={"Name": "unless-stopped"},
@@ -62,49 +51,14 @@ class DockerWorkerManager:
             except APIError as e:
                 logger.error(f"Ошибка запуска log_worker: {e}")
 
-        # 🔸 join_worker
-        if "join_worker" not in self.running_workers:
-            try:
-                container = self.docker_client.containers.run(
-                    "salute_manager",
-                    command="python workers/join_worker/worker.py",
-                    environment={
-                        "DATABASE_URL": os.getenv("DATABASE_URL"),
-                        "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
-                        "BOT_TOKEN": os.getenv("BOT_TOKEN"),
-                        "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
-                        "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
-                        "REDIS_URL": os.getenv("REDIS_URL"),
-                    },
-                    volumes={
-                        f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}
-                    },
-                    network=self.network_name,
-                    detach=True,
-                    restart_policy={"Name": "unless-stopped"},
-                )
-                self.running_workers["join_worker"] = container.id
-                logger.info("🚪 Запущен join_worker")
-            except APIError as e:
-                logger.error(f"Ошибка запуска join_worker: {e}")
-
         # 🔸 broadcast_worker
         if "broadcast_worker" not in self.running_workers:
             try:
                 container = self.docker_client.containers.run(
-                    "salute_manager",
+                    self.image_name,
                     command="python workers/broadcast_worker/worker.py",
-                    environment={
-                        "DATABASE_URL": os.getenv("DATABASE_URL"),
-                        "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
-                        "BOT_TOKEN": os.getenv("BOT_TOKEN"),
-                        "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
-                        "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
-                        "REDIS_URL": os.getenv("REDIS_URL"),
-                    },
-                    volumes={
-                        f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}
-                    },
+                    environment=self._get_environment(),
+                    volumes=self._get_volumes(),
                     network=self.network_name,
                     detach=True,
                     restart_policy={"Name": "unless-stopped"},
@@ -139,22 +93,8 @@ class DockerWorkerManager:
                             "salute_broadcast_worker",
                             command=f"python workers/broadcast_worker/worker.py {bot_id}",
                             name=f"salute_broadcast_worker_{bot_id}_{current_workers}",
-                            environment={
-                                "DATABASE_URL": os.getenv("DATABASE_URL"),
-                                "ALEMBIC_DATABASE_URL": os.getenv(
-                                    "ALEMBIC_DATABASE_URL"
-                                ),
-                                "BOT_TOKEN": os.getenv("BOT_TOKEN"),
-                                "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
-                                "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
-                                "REDIS_URL": os.getenv("REDIS_URL"),
-                            },
-                            volumes={
-                                f"{os.getcwd()}/logs": {
-                                    "bind": "/app/logs",
-                                    "mode": "rw",
-                                }
-                            },
+                            environment=self._get_environment(),
+                            volumes=self._get_volumes(),
                             network=self.network_name,
                             detach=True,
                             restart_policy={"Name": "unless-stopped"},
@@ -167,46 +107,6 @@ class DockerWorkerManager:
                         logger.error(f"Ошибка запуска broadcast_worker: {e}")
         except Exception as e:
             logger.error(f"Ошибка проверки broadcast очередей: {e}")
-
-    async def check_join_queue(self):
-        try:
-            queue_length = await redis.llen("join_queue")
-            current_workers = len(
-                [k for k in self.running_workers if k.startswith("join_worker")]
-            )
-
-            if (
-                queue_length > current_workers
-                and current_workers < MAX_EXTRA_JOIN_WORKERS
-            ):
-                try:
-                    container = self.docker_client.containers.run(
-                        "salute_join_worker",
-                        command="python workers/join_worker/worker.py",
-                        name=f"salute_join_worker_{current_workers}",
-                        environment={
-                            "DATABASE_URL": os.getenv("DATABASE_URL"),
-                            "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
-                            "BOT_TOKEN": os.getenv("BOT_TOKEN"),
-                            "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
-                            "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
-                            "REDIS_URL": os.getenv("REDIS_URL"),
-                        },
-                        volumes={
-                            f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}
-                        },
-                        network=self.network_name,
-                        detach=True,
-                        restart_policy={"Name": "unless-stopped"},
-                    )
-                    self.running_workers[f"join_worker_{current_workers}"] = (
-                        container.id
-                    )
-                    logger.info(f"🚪 Запущен join_worker #{current_workers}")
-                except APIError as e:
-                    logger.error(f"Ошибка запуска join_worker: {e}")
-        except Exception as e:
-            logger.error(f"Ошибка проверки join очереди: {e}")
 
     async def cleanup_inactive_workers(self):
         try:
@@ -221,6 +121,19 @@ class DockerWorkerManager:
                     del self.running_workers[worker_name]
         except Exception as e:
             logger.error(f"Ошибка очистки неактивных воркеров: {e}")
+
+    def _get_environment(self):
+        return {
+            "DATABASE_URL": os.getenv("DATABASE_URL"),
+            "ALEMBIC_DATABASE_URL": os.getenv("ALEMBIC_DATABASE_URL"),
+            "BOT_TOKEN": os.getenv("BOT_TOKEN"),
+            "ADMIN_CHAT_ID": os.getenv("ADMIN_CHAT_ID"),
+            "SUPPORT_USERNAME": os.getenv("SUPPORT_USERNAME"),
+            "REDIS_URL": os.getenv("REDIS_URL"),
+        }
+
+    def _get_volumes(self):
+        return {f"{os.getcwd()}/logs": {"bind": "/app/logs", "mode": "rw"}}
 
 
 if __name__ == "__main__":

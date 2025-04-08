@@ -1,8 +1,10 @@
 # app/main_bot/config/config.py
 
-from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
+
 load_dotenv(".env")
+
 
 class Settings(BaseSettings):
     bot_token: str
@@ -13,6 +15,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()
