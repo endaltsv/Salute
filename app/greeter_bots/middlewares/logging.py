@@ -28,10 +28,10 @@ class LoggingMiddleware(BaseMiddleware):
 
             telegram_id = tg_user.id
 
-            await send_log_to_admin(
-                f"🔍 Проверка пользователя {telegram_id} на владельца "
-                f"Greeter-бота {self.bot_id}"
-            )
+            # await send_log_to_admin(
+            #     f"🔍 Проверка пользователя {telegram_id} на владельца "
+            #     f"Greeter-бота {self.bot_id}"
+            # )
 
             async with async_session() as session:
                 result = await session.execute(
