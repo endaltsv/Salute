@@ -19,8 +19,8 @@ class Channel(Base):
     )
 
     has_button = Column(Boolean, default=False)
-    button_type = Column(String)  # inline / reply
-    button_text = Column(String, nullable=False)
+    button_type = Column(String, default="")  # Добавь default=""
+    button_text = Column(String, nullable=False, default="")
     button_url = Column(String, nullable=True)
 
     captcha_enabled = Column(Boolean, default=True)
