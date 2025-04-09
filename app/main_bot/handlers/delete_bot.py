@@ -5,11 +5,8 @@ from app.database.base.session import async_session
 from app.database.models.bot import Bot as BotModel
 from app.database.models.channel import Channel
 from app.database.models.member import ChannelMember
-import psutil
-import os
-import signal
-
 from app.utils.logger import logger
+import docker
 
 router = Router()
 
@@ -50,26 +47,28 @@ async def delete_bot(callback: types.CallbackQuery, state: FSMContext):
         await session.commit()
         logger.info(f"✅ Бот @{username} удалён из базы (ID: {bot_id})")
 
-        # 🛑 4. Останавливаем greeter-процесс
-        killed = kill_process_by_token(token)
-        if killed:
-            logger.info(f"🛑 Greeter-процесс @{username} успешно остановлен")
+        # 🛑 4. Удаляем greeter-сервис Docker
+        deleted = remove_docker_service(bot_id)
+        if deleted:
+            logger.info(f"🛑 Greeter-сервис @{username} успешно удалён")
         else:
-            logger.warning(f"⚠ Не найден активный процесс для @{username} (token не найден среди процессов)")
+            logger.warning(f"⚠ Не найден Docker-сервис для @{username} (bot_id={bot_id})")
 
         await callback.message.answer(f"✅ Бот @{username} удалён.")
         await callback.answer()
 
 
+def remove_docker_service(bot_id: int) -> bool:
+    """Удаляет Docker-сервис greeter-бота по bot_id"""
+    service_name = f"salute_greeter_{bot_id}"
+    client = docker.from_env()
 
-def kill_process_by_token(token: str) -> bool:
-    """Убивает процесс, где в env задан BOT_TOKEN"""
-    for proc in psutil.process_iter(['pid', 'name', 'environ']):
-        try:
-            env = proc.environ()
-            if env.get("BOT_TOKEN") == token:
-                os.kill(proc.pid, signal.SIGTERM)
-                return True
-        except (psutil.AccessDenied, psutil.NoSuchProcess):
-            continue
-    return False
+    try:
+        service = client.services.get(service_name)
+        service.remove()
+        return True
+    except docker.errors.NotFound:
+        return False
+    except docker.errors.APIError as e:
+        logger.error(f"❌ Ошибка при удалении сервиса {service_name}: {e.explanation}")
+        return False
