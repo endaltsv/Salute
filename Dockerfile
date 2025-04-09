@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование исходного кода
 COPY . .
+COPY wait-for-it.sh /wait-for-it.sh
+RUN chmod +x /wait-for-it.sh
 
 # Создание директории для логов
 RUN mkdir -p /app/logs
@@ -25,4 +27,4 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
 # Запуск приложения
-CMD ["python", "main.py"] 
+CMD ["python", "main.py"]

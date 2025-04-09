@@ -1,7 +1,9 @@
+#app/greeter_bots/handlers/member_join.py
 import asyncio
 import json
 
 from aiogram import Router
+
 from aiogram.types import ChatJoinRequest, ChatMemberUpdated
 
 from app.redis_queue.admin_logs import send_log_to_admin

@@ -16,6 +16,7 @@ from aiogram.exceptions import TelegramUnauthorizedError, TelegramBadRequest
 from sqlalchemy import select
 import asyncio
 
+from app.utils.docker_service import create_greeter_service
 from app.utils.logger import logger
 
 router = Router()
@@ -131,13 +132,14 @@ async def process_token(message: types.Message, state: FSMContext):
     ])
     await message.answer(text, reply_markup=keyboard)
 
+    create_greeter_service(bot_id, token)
     # ⬇️ запускаем greeter_runner.py через subprocess
-    subprocess.Popen(
-        [sys.executable, "greeter_runner.py"],
-        env={**os.environ, "BOT_TOKEN": token},
-        # 👇 Если хочешь полностью отвязать greeter-бота от main_bot (Windows only)
-        # creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    )
+    # subprocess.Popen(
+    #     [sys.executable, "greeter_runner.py"],
+    #     env={**os.environ, "BOT_TOKEN": token},
+    #     # 👇 Если хочешь полностью отвязать greeter-бота от main_bot (Windows only)
+    #     # creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    # )
 
     # 📦 Альтернатива: запуск через Docker (пока закомментировано)
     # subprocess.Popen([
