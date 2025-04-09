@@ -30,7 +30,7 @@ async def refresh_caches():
             logger.info("✅ Caches refreshed successfully")
         except Exception as e:
             logger.error(f"❌ Failed to refresh caches: {e}")
-        await asyncio.sleep(60)  # Обновляем раз в 60 секунд
+        await asyncio.sleep(20)  # Обновляем раз в 60 секунд
 
 
 async def process_batch(tasks: List[Dict]):
