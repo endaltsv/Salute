@@ -12,6 +12,8 @@ services:
     volumes:
       - ./logs:/app/logs
     command: sh -c "sleep 5 && python main.py"
+    networks:
+      - salute_network
     deploy:
       replicas: 1
       restart_policy:
@@ -29,6 +31,8 @@ services:
     volumes:
       - .:/app
     entrypoint: [ "sh", "-c", "until pg_isready -h postgres -p 5432; do sleep 2; done; alembic upgrade head" ]
+    networks:
+      - salute_network
     deploy:
       replicas: 1
       restart_policy:
@@ -45,6 +49,8 @@ services:
     volumes:
       - ./logs:/app/logs
     command: sh -c "/wait-for-it.sh postgres:5432 -- /wait-for-it.sh redis:6379 -- python workers/join_worker/worker.py"
+    networks:
+      - salute_network
     deploy:
       replicas: 2
       restart_policy:
@@ -63,12 +69,15 @@ services:
     volumes:
       - ./logs:/app/logs
     command: sh -c "/wait-for-it.sh postgres:5432 -- /wait-for-it.sh redis:6379 -- python workers/broadcast_worker/worker.py"
+    networks:
+      - salute_network
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+
   broadcast_autoscaler:
     image: salute_manager
     build: .
@@ -77,6 +86,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: sh -c "sleep 5 && python workers/broadcast_worker/broadcast_autoscaler.py"
+    networks:
+      - salute_network
     deploy:
       replicas: 1
       restart_policy:
@@ -95,6 +106,8 @@ services:
     volumes:
       - ./logs:/app/logs
     command: sh -c "/wait-for-it.sh postgres:5432 -- /wait-for-it.sh redis:6379 -- python workers/log_worker/worker.py"
+    networks:
+      - salute_network
     deploy:
       replicas: 1
       restart_policy:
@@ -117,6 +130,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - salute_network
     deploy:
       replicas: 1
       placement:
@@ -134,11 +149,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - salute_network
     deploy:
       replicas: 1
       placement:
         constraints:
           - node.role == manager
+
+networks:
+  salute_network:
+    driver: overlay
+    attachable: true
 
 volumes:
   postgres_data:
