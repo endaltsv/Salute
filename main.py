@@ -8,7 +8,6 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from app.database.base.init_db import init_db
-from app.greeter_bots.core.launcher_all import launch_all_greeter_bots
 from app.main_bot.config.config import settings
 from app.main_bot.handlers import (
     about,
