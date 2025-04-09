@@ -51,9 +51,6 @@ async def main() -> None:
     await init_db()
     logger.info("✅ База данных готова")
 
-    # logger.info("📡 Запускаем всех greeter-ботов из базы...")
-    # await launch_all_greeter_bots()
-
     logger.info("🤖 Запуск основного управляющего бота...")
     bot = Bot(
         token=settings.bot_token,
