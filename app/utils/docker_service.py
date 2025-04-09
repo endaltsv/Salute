@@ -10,7 +10,7 @@ def create_greeter_service(bot_id: int, token: str):
 
     service_name = f"salute_greeter_{bot_id}"
     image = "salute_manager"
-    network = "salute_salute_network"
+    network = "salute_network"
 
     env_vars = [
         f"BOT_TOKEN={token}",

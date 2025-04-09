@@ -160,9 +160,10 @@ services:
 
 networks:
   salute_network:
-    driver: overlay
-    attachable: true
+    external: true
 
 volumes:
   postgres_data:
+    external: true
   redis_data:
+    external: true
