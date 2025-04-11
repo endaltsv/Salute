@@ -1,6 +1,5 @@
-# app/main_bot/handlers/support.py
-
 from aiogram import Router, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from app.main_bot.config.config import settings
 from app.utils.logger import logger
@@ -18,6 +17,13 @@ async def support(callback: types.CallbackQuery):
         f"👨‍💻 <a href='https://t.me/{support_username}'>@{support_username}</a>\n\n"
         "📌 Мы всегда на связи 😉"
     )
-    await callback.message.edit_text(text, disable_web_page_preview=True)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_main_menu")]
+        ]
+    )
+
+    await callback.message.edit_text(text, disable_web_page_preview=True, reply_markup=keyboard)
     logger.info(f"🆘 Пользователь @{callback.from_user.username} (ID: {callback.from_user.id}) открыл 'Поддержка'")
     await callback.answer()

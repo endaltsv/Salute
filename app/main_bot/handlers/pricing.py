@@ -7,19 +7,22 @@ from app.utils.logger import logger
 
 router = Router()
 
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 
 @router.callback_query(lambda c: c.data == "pricing")
 async def pricing(callback: types.CallbackQuery):
     text = (
         "<b>💎 Тарифы</b>\n\n"
-        "🔹 <b>Бесплатный</b> — до 1 бота, базовая статистика\n"
-        "🔸 <b>Премиум</b> — от 490₽/мес:\n"
-        "• до 10 ботов\n"
-        "• рассылки\n"
-        "• аналитика\n"
-        "• автоодобрение\n\n"
         "Подписка скоро будет доступна ⏳"
     )
-    await callback.message.edit_text(text)
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_main_menu")]
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
     logger.info(f"💎 Пользователь @{callback.from_user.username} (ID: {callback.from_user.id}) открыл 'Тарифы'")
     await callback.answer()
