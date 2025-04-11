@@ -13,23 +13,22 @@ from app.database.base.session import async_session
 from app.database.models.member import ChannelMember
 from app.utils.logger import logger
 from workers.join_worker.services.bot_cache import get_bot
-from workers.join_worker.services.channel_cache import get_channel
-
+from workers.join_worker.services.channel_cache import get_channel, get_channels_bulk
 
 
 async def handle_join_batch(payloads: list):
-
     if not payloads:
         return
 
     async with async_session() as session:
         keys = set((p["chat_id"], p["user_id"], p["bot_id"]) for p in payloads)
 
-        channels = {
-            (chat_id, bot_id): get_channel(str(chat_id), bot_id)
+        channels = await get_channels_bulk([
+            (chat_id, bot_id)
             for chat_id, _, bot_id in keys
-        }
+        ])
 
+        # Получаем ботов (если get_bot у тебя sync — оставляем так, иначе тоже надо переписать)
         bots = {bot_id: get_bot(bot_id) for _, _, bot_id in keys}
 
         existing_members_result = await session.execute(
@@ -58,10 +57,8 @@ async def handle_join_batch(payloads: list):
         for payload in payloads:
             tasks.append(process_payload(payload, channels, bots, existing_members, new_members))
 
-        # Выполняем все задачи параллельно
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Логируем ошибки, если есть
         for result in results:
             if isinstance(result, Exception):
                 logger.warning(f"⚠️ Exception in process_payload: {result}")
@@ -74,6 +71,7 @@ async def handle_join_batch(payloads: list):
             except IntegrityError:
                 await session.rollback()
                 logger.warning(f"⚠️ Bulk insert failed due to IntegrityError")
+
 
 
 async def process_payload(payload, channels, bots, existing_members, new_members):
@@ -144,9 +142,9 @@ async def send_welcome(bot, user_id: int, channel):
         kb = None
         if channel["has_button"]:
             if (
-                channel["button_type"] == "inline"
-                and channel["button_text"]
-                and channel["button_url"]
+                    channel["button_type"] == "inline"
+                    and channel["button_text"]
+                    and channel["button_url"]
             ):
                 kb = InlineKeyboardMarkup(
                     inline_keyboard=[

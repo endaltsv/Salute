@@ -1,12 +1,14 @@
 from aiogram import Router, F, types
-from sqlalchemy import delete, select
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy import delete
 from app.database.base.session import async_session
 from app.database.models import ChannelMember
 from app.database.models.channel import Channel
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
 from app.utils.logger import logger
-from app.redis_queue.admin_logs import send_log_to_admin  # поправь, если название другое
+from app.redis_queue.admin_logs import send_log_to_admin
+
+# Импортируем функцию удаления из кеша
+from workers.join_worker.services.channel_cache import remove_channel_from_cache
 
 def get_router() -> Router:
     router = Router()
@@ -46,7 +48,6 @@ def get_router() -> Router:
     async def confirm_delete_channel(callback: types.CallbackQuery, bot_id: int):
         channel_id = int(callback.data.split(":")[1])
 
-        # Лог — подтверждение удаления
         log_text = (
             f"✅ Пользователь @{callback.from_user.username} (ID: {callback.from_user.id}) "
             f"подтвердил удаление канала (ID={channel_id}, bot_id={bot_id})"
@@ -55,13 +56,13 @@ def get_router() -> Router:
         logger.info(log_text)
 
         async with async_session() as session:
-            # Удалим всех участников этого канала
+            # Удаляем участников канала
             await session.execute(
                 delete(ChannelMember).where(ChannelMember.channel_id == channel_id)
             )
             logger.info(f"🧹 Удалены участники канала (ID={channel_id})")
 
-            # Удалим сам канал
+            # Удаляем сам канал
             await session.execute(
                 delete(Channel).where(Channel.id == channel_id, Channel.bot_id == bot_id)
             )
@@ -73,12 +74,15 @@ def get_router() -> Router:
             await send_log_to_admin(log_text)
             logger.info(log_text)
 
+        # Удаляем канал из кеша
+        await remove_channel_from_cache(channel_id, bot_id)
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main_menu")]
         ])
 
         await callback.message.edit_text(
-            f"✅ Канал успешно удалён.\n\n",
+            "✅ Канал успешно удалён.\n\n",
             reply_markup=keyboard
         )
         await callback.answer("Канал удалён")
